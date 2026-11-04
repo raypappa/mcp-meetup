@@ -1,328 +1,156 @@
 # MCP Meetup-Claude Integration Server
 
-## Overview
+An MCP (Model Context Protocol) server that integrates Meetup.com's event
+discovery API with Anthropic's Claude LLM. It enables intelligent event
+discovery, natural-language querying, and AI-powered recommendations for
+Meetup events.
 
-This is a production-quality Model Communication Protocol (MCP) server that seamlessly integrates Meetup.com's event discovery APIs with Anthropic's Claude LLM. The server enables intelligent event discovery, natural language querying, and AI-powered recommendations for Meetup events.
+Built on the MCP SDK v2 (`MCPServer`), packaged as an installable Python
+package, and managed with [uv](https://docs.astral.sh/uv/).
 
-## Architecture
+## MCP Tools
 
-### Core Components
+1. **`search_meetup_events`** — Search Meetup events with a natural-language
+   query. Parameters: `query` (required), `max_results` (optional, default 20,
+   capped at 100).
 
-1. **MCP Protocol Handler** (`MeetupClaudeMCPServer`)
-   - Manages client connections and tool definitions
-   - Handles resource management and server lifecycle
-   - Provides standardized MCP interface
+2. **`augment_prompt_with_events`** — Augment a user prompt with relevant
+   event data. Parameters: `prompt` (required).
 
-2. **Authentication Manager** (`AuthenticationManager`)
-   - OAuth2 flow implementation for Meetup.com
-   - Token lifecycle management and refresh
-   - Secure credential handling
+3. **`get_event_recommendations`** — AI-powered event recommendations via
+   Claude, with event context. Parameters: `query` (required), `preferences`
+   (optional). Falls back to the raw event list when no Anthropic key is
+   configured.
 
-3. **Event Discovery Engine** (`EventDiscoveryEngine`)
-   - Natural language query parameter extraction
-   - Dual API support (REST and GraphQL)
-   - Intelligent event filtering and ranking
+4. **`get_oauth_url`** — Returns the Meetup OAuth2 authorization URL for the
+   configured client, or an instruction to set the required credentials.
 
-4. **Prompt Augmentation Service** (`PromptAugmentationService`)
-   - Context-aware prompt enhancement
-   - Event data formatting for LLM consumption
-   - Smart relevance filtering
+## MCP Resources
 
-5. **Claude Integration** (`ClaudeIntegration`)
-   - Anthropic API client management
-   - Response generation and error handling
-   - Configurable model parameters
-
-### Data Flow
-
-```
-User Query → Parameter Extraction → Event Discovery → Data Augmentation → Claude Processing → Response
-```
+- **`meetup://config`** — Current server configuration (values redacted to
+  `Set` / `Not Set`) and limits.
+- **`meetup://auth/status`** — Boolean status: access token present, OAuth
+  URL available, Claude integration enabled.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.8+
-- Meetup.com account
-- Anthropic API account
+- Python 3.10+ (3.13 recommended)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- A Meetup.com account
+- An Anthropic API account
 
 ### Installation
 
 ```bash
-# Clone or download the project
-cd /home/daniel/work/mcp-meetup
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your credentials
-
-# Run the server
-python meetup_claude_mcp_server.py
+git clone git@github.com:raypappa/mcp-meetup.git
+cd mcp-meetup
+uv sync
 ```
 
-## API Setup Instructions
+### Configure
 
-### 1. Meetup.com OAuth Setup
+```bash
+cp .env.example .env
+# edit .env with your credentials, then:
+export $(grep -v '^#' .env | xargs)
+```
 
-1. Visit [Meetup OAuth Consumers](https://secure.meetup.com/meetup_api/oauth_consumers/)
-2. Click "Create New Consumer"
-3. Fill in application details:
-   - **Application Name**: Your app name
-   - **Application Website**: Your website or GitHub repo
-   - **Redirect URI**: `http://localhost:8080/oauth/callback`
-   - **Application Description**: Brief description of your use case
+Required environment variables:
 
-4. Save the generated:
-   - **Client ID**
-   - **Client Secret**
-
-### 2. Anthropic API Setup
-
-1. Visit [Anthropic Console](https://console.anthropic.com/)
-2. Create account or sign in
-3. Navigate to API Keys section
-4. Generate new API key
-5. Copy the API key securely
-
-### 3. Environment Configuration
-
-Required environment variables in `.env`:
 ```bash
 MEETUP_CLIENT_ID=your_meetup_client_id_here
 MEETUP_CLIENT_SECRET=your_meetup_client_secret_here
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
-Optional configuration:
+Optional:
+
 ```bash
 MEETUP_ACCESS_TOKEN=your_access_token_if_available
-MEETUP_REDIRECT_URI=http://localhost:8080/oauth/callback
+MEETUP_REDIRECT_URI=http://localhost:8080/
 LOG_LEVEL=INFO
 MAX_EVENTS_PER_QUERY=20
 DEFAULT_RADIUS=25
 ```
 
-## MCP Tools
+### Run
 
-### 1. `search_meetup_events`
-
-Search for Meetup events using natural language queries.
-
-**Parameters:**
-- `query` (string, required): Natural language search query
-- `max_results` (integer, optional): Maximum events to return (default: 20)
-
-**Example:**
-```json
-{
-  "query": "Python programming events near San Francisco this week",
-  "max_results": 10
-}
+```bash
+uv run mcp-meetup
+# or, without the console script:
+uv run python -m mcp_meetup
 ```
 
-### 2. `augment_prompt_with_events`
+The server speaks MCP over stdio — launch it from your MCP client of choice
+(Claude Desktop, `claude mcp add`, etc.):
 
-Enhance a user prompt with relevant event data for context.
-
-**Parameters:**
-- `prompt` (string, required): User prompt to augment
-
-**Example:**
-```json
-{
-  "prompt": "What programming events should I attend this weekend?"
-}
+```bash
+claude mcp add meetup -- uv run mcp-meetup
 ```
 
-### 3. `get_event_recommendations`
+## Meetup.com API Setup
 
-Get AI-powered event recommendations using Claude with event context.
+1. Visit [Meetup OAuth Consumers](https://secure.meetup.com/meetup_api/oauth_consumers/)
+2. Click "Create New Consumer" and fill in:
+   - **Application Name**: your app name
+   - **Application Website**: your website or GitHub repo
+   - **Redirect URI**: `http://localhost:8080/`
+   - **Application Description**: brief description of your use case
+3. Save the generated **Client ID** and **Client Secret**
+4. If you have an OAuth consumer, you can skip the token flow by setting
+   `MEETUP_ACCESS_TOKEN` directly.
 
-**Parameters:**
-- `query` (string, required): Natural language query for recommendations
-- `preferences` (string, optional): Additional preferences or constraints
-
-**Example:**
-```json
-{
-  "query": "I'm interested in machine learning and networking events",
-  "preferences": "Prefer free events, willing to travel up to 30 miles"
-}
-```
-
-### 4. `get_oauth_url`
-
-Get Meetup OAuth authorization URL for authentication setup.
-
-**Parameters:** None
-
-## MCP Resources
-
-### 1. `meetup://config`
-
-Current server configuration and status information.
-
-### 2. `meetup://auth/status`
-
-Authentication status with Meetup.com including token validity.
-
-## Natural Language Query Examples
-
-The server intelligently extracts parameters from natural language:
-
-**Time-based queries:**
-- "events today"
-- "what's happening tomorrow"
-- "events this week"
-
-**Location-based queries:**
-- "events near me"
-- "meetups in San Francisco"
-- "remote events only"
-
-**Topic-based queries:**
-- "Python programming meetups"
-- "data science events"
-- "startup networking"
-- "AI and machine learning"
-
-**Combined queries:**
-- "Python events near me today"
-- "remote data science meetups this week"
-- "free networking events in San Francisco"
-
-## Error Handling
-
-The server includes comprehensive error handling for:
-
-- **Authentication errors**: Missing credentials, expired tokens
-- **API errors**: Rate limiting, network failures, invalid queries
-- **Data processing errors**: Malformed events, empty results
-
-## Security Considerations
-
-- Environment variable configuration prevents credential exposure
-- OAuth2 flow implementation follows security best practices
-- No persistent storage of user queries or personal data
-- Configurable logging levels to control information exposure
-
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 mcp-meetup/
-├── meetup_claude_mcp_server.py    # Main server implementation
-├── requirements.txt               # Python dependencies
-├── .env.example                  # Environment configuration template
-├── README.md                     # This documentation
-├── docs/                         # Additional documentation
-│   └── adr/                      # Architecture decision records
-└── tests/                        # Test files (future)
+├── pyproject.toml              # uv-managed project metadata + dependencies
+├── uv.lock                     # Locked dependency graph (commit it)
+├── .python-version             # Pinned interpreter (3.13)
+├── src/
+│   └── mcp_meetup/
+│       ├── __init__.py
+│       ├── __main__.py         # Entry point: python -m mcp_meetup
+│       ├── server.py           # MCPServer, tools, resources, lifespan
+│       ├── config.py           # Environment configuration (Config)
+│       ├── meetup_client.py    # Meetup API client (aiohttp)
+│       ├── models.py           # Pydantic models (MeetupEvent, EventQuery)
+│       ├── extract.py          # Natural-language query parameter extraction
+│       └── format.py           # Event formatting for LLM consumption
+└── tests/
+    ├── conftest.py
+    ├── test_server.py          # Tool implementations, protocol, stdio e2e
+    ├── test_meetup_client.py
+    ├── test_extract.py
+    ├── test_format.py
+    ├── test_models.py
+    └── test_config.py
 ```
 
-### Testing
-
-Basic testing can be done by running the server and using MCP client tools:
+## Development
 
 ```bash
-# Start the server
-python meetup_claude_mcp_server.py
-
-# In another terminal, test with MCP client
-# (MCP client implementation would go here)
+uv sync                  # install deps + dev group (pytest, pytest-asyncio)
+uv run pytest            # run the test suite
+uv run pytest -k testname  # run a single test
 ```
 
-### Extending the Server
+The suite covers the tool implementations, the MCP protocol surface
+(`list_tools`, `call_tool`, `list_resources` with schema generation and
+validation), an in-process `Client`, and a real subprocess stdio handshake
+that launches `python -m mcp_meetup` and drives it over stdin/stdout.
 
-The modular design makes it easy to extend:
+## Error Handling
 
-1. **Additional APIs**: Add other event platforms in `EventDiscoveryEngine`
-2. **Enhanced filtering**: Extend `extract_query_parameters` method
-3. **Caching**: Add Redis or memory caching in `PromptAugmentationService`
-4. **Additional tools**: Add new MCP tools in `_setup_tools` method
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Authentication failures**
-   - Verify client ID and secret are correct
-   - Check redirect URI matches OAuth consumer settings
-   - Ensure access token hasn't expired
-
-2. **No events found**
-   - Try broader search terms
-   - Check location spelling and format
-   - Verify time parameters are reasonable
-
-3. **API rate limiting**
-   - Reduce query frequency
-   - Implement request caching
-   - Check API quota usage
-
-4. **Claude integration errors**
-   - Verify Anthropic API key is valid
-   - Check API quota and billing status
-   - Review prompt length and complexity
-
-### Debug Mode
-
-Enable debug logging:
-
-```bash
-export LOG_LEVEL=DEBUG
-python meetup_claude_mcp_server.py
-```
-
-### Health Checks
-
-Check server status using MCP resources:
-
-```bash
-# Check configuration
-# Use MCP client to read meetup://config
-
-# Check authentication status
-# Use MCP client to read meetup://auth/status
-```
-
-## Contributing
-
-### Development Workflow
-
-1. Fork repository
-2. Create feature branch
-3. Implement changes with tests
-4. Update documentation
-5. Submit pull request
-
-### Code Standards
-
-- Follow PEP 8 style guidelines
-- Use type hints throughout
-- Maintain comprehensive docstrings
-- Include unit tests for new features
+- Missing/empty `query` or `prompt` returns a clear `"Error: …"` message.
+- Meetup API failures (network, rate limits, malformed events) return a
+  `"No events found"` result instead of raising through the protocol.
+- Claude failures fall back to the raw event list with an explanatory note.
+- Timestamps are parsed leniently (`Z` suffixes, fractional seconds) via
+  `dateutil`.
 
 ## License
 
-MIT License - see LICENSE file for details.
-
-## Support
-
-For issues and questions:
-
-1. Check troubleshooting section
-2. Review configuration and setup
-3. Create detailed bug report with logs
-4. Include reproduction steps and environment details
-
----
-
-**Version**: 1.0.0  
-**Last Updated**: 2025-07-27  
-**Author**: Generated for Dan Shields
+MIT — see [LICENSE](LICENSE).
